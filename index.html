@@ -102,6 +102,9 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--red);outline-offset
 .btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
 .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
 .btn.ghost{background:var(--card);color:var(--ink)}
+.toast{max-width:720px;margin:0 auto 10px;background:var(--red);color:#fff;font-weight:800;font-size:15px;border:3px solid var(--ink);border-radius:14px;padding:10px 14px;box-shadow:3px 3px 0 var(--ink)}
+input.bad,textarea.bad{border-color:var(--red);background:#FFF1EF}
+.btn.dim{opacity:.6}
 .err{color:var(--red);font-weight:800;font-size:14px;margin:10px 0 0}
 dialog{border:3px solid var(--ink);border-radius:22px;padding:0;max-width:520px;width:calc(100% - 32px);background:var(--card);color:var(--ink);box-shadow:6px 6px 0 var(--ink)}
 dialog::backdrop{background:rgba(20,20,20,.45)}
@@ -180,9 +183,9 @@ dialog::backdrop{background:rgba(20,20,20,.45)}
   </form>
 </div>
 
-<div class="bar"><div class="in">
+<div class="bar"><div class="toast" id="toast" role="alert" hidden></div><div class="in">
   <div class="tot"><b id="total">$0</b><span id="sub">Add a bag to get started</span></div>
-  <button class="btn" id="review" form="order" type="submit" disabled>Review order</button>
+  <button class="btn" id="review" form="order" type="submit">Review order</button>
 </div></div>
 
 <dialog id="dlg"><div class="sheet">
@@ -270,7 +273,7 @@ function update(){
   $("#total").textContent=money(sub+ship);
   $("#sub").textContent=bags?`${bags} bag${bags>1?"s":""}${ship?" + $10 shipping":" · pick up"}`:"Add a bag to get started";
   $("#bagcount").textContent=`${bags} bag${bags===1?"":"s"}`;
-  $("#review").disabled=!bags;
+  $("#review").classList.toggle("dim",!bags);
   $("#addrWrap").hidden=!shipping();
 }
 
@@ -293,12 +296,25 @@ document.querySelectorAll("input[name=ship]").forEach(r=>r.addEventListener("cha
 $("#order").addEventListener("submit",e=>{
   e.preventDefault();
   const errs=[];
-  if(!$("#name").value.trim()) errs.push("your name");
-  if(!/^\S+@\S+\.\S+$/.test($("#email").value.trim())) errs.push("a valid email");
-  if($("#phone").value.replace(/\D/g,"").length<10) errs.push("a phone number");
-  if(shipping()&&!$("#addr").value.trim()) errs.push("a shipping address");
+  const bad=[];
+  const chk=(ok,sel,msg)=>{const el=$(sel); if(el) el.classList.toggle("bad",!ok); if(!ok){errs.push(msg);bad.push(el);}};
+  const bagCount=Object.values(qty).reduce((a,n)=>a+n,0);
+  if(!bagCount){errs.push("at least one bag");bad.push($("#flavors"));}
+  chk($("#name").value.trim(),"#name","your name");
+  chk(/^\S+@\S+\.\S+$/.test($("#email").value.trim()),"#email","a valid email");
+  chk($("#phone").value.replace(/\D/g,"").length>=10,"#phone","a phone number");
+  if(shipping()) chk($("#addr").value.trim(),"#addr","a shipping address"); else $("#addr").classList.remove("bad");
   const err=$("#err");
-  if(errs.length){err.textContent="Add "+errs.join(", ")+" to continue.";err.hidden=false;return;}
+  if(errs.length){
+    const list=errs.length>1?errs.slice(0,-1).join(", ")+" and "+errs.at(-1):errs[0];
+    err.textContent="Add "+list+" to continue."; err.hidden=false;
+    toast("Add "+list+" to continue.");
+    // jump down to the contact details; only go back to flavors when bags are the only gap
+    const field=bad.find(el=>el.tagName!=="DIV");
+    if(field){ window.scrollTo({top:document.documentElement.scrollHeight,behavior:"smooth"}); setTimeout(()=>field.focus({preventScroll:true}),450); }
+    else bad[0].scrollIntoView({behavior:"smooth",block:"start"});
+    return;
+  }
   err.hidden=true;
   const L=lines(), ship=shipping()?10:0, sub=L.reduce((a,l)=>a+l.amt,0);
   $("#receipt").innerHTML=`<table>${L.map(l=>`<tr><td>${l.t}</td><td>${money(l.amt)}</td></tr>`).join("")}
@@ -309,6 +325,9 @@ $("#order").addEventListener("submit",e=>{
   setMode("review");
   $("#dlg").showModal();
 });
+let toastT;
+function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,4000);}
+["#name","#email","#phone","#addr"].forEach(s=>$(s).addEventListener("input",e=>e.target.classList.remove("bad")));
 function setMode(m,msg){
   $("#aReview").hidden=m!=="review"; $("#aFallback").hidden=m!=="fallback"; $("#aDone").hidden=m!=="done";
   $("#dEyebrow").textContent={review:"Almost done",sending:"Sending",done:"Order received",fallback:"One more step"}[m]||"";
